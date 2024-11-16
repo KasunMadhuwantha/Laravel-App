@@ -1,0 +1,158 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Deploy Laravel Web Application on EC2 Instance in Public Subnet with RDS Database in Private Subnet
+
+Resources:
+  # VPC Configuration
+  LaravelVPC:
+    Type: "AWS::EC2::VPC"
+    Properties:
+      CidrBlock: "10.0.0.0/16" # Define a VPC with a CIDR block for private IPs
+      EnableDnsSupport: true # Enable DNS resolution within the VPC
+      EnableDnsHostnames: true # Enable DNS hostnames for instances in the VPC
+
+  # Public Subnet for EC2 instance
+  PublicSubnet:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref LaravelVPC # Reference the VPC we created
+      CidrBlock: "10.0.1.0/24" # Define the subnet range in the VPC
+      AvailabilityZone: "us-east-1a" # Modify based on region
+      MapPublicIpOnLaunch: true # Ensure EC2 instances in this subnet get a public IP
+
+  # Private Subnet for RDS database
+  PrivateSubnet1:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref LaravelVPC
+      CidrBlock: "10.0.2.0/24"
+      AvailabilityZone: "us-east-1a"
+
+  PrivateSubnet2:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref LaravelVPC
+      CidrBlock: "10.0.3.0/24"
+      AvailabilityZone: "us-east-1b"
+
+  # EC2 Instance to host Laravel Application
+  LaravelEC2Instance:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      InstanceType: "t2.micro"
+      ImageId: "ami-0866a3c8686eaeeba" # Ubuntu AMI for EC2
+      SubnetId: !Ref PublicSubnet # EC2 in the public subnet
+      KeyName: "laravel-key-pair"
+      SecurityGroupIds:
+        - !Ref EC2SecurityGroup # Apply security group for EC2 (allows HTTP and SSH access)
+      Tags:
+        - Key: Name
+          Value: LaravelEC2Instance
+
+  # RDS Instance for Laravel application database
+  LaravelRDSInstance:
+    Type: "AWS::RDS::DBInstance"
+    Properties:
+      DBInstanceIdentifier: "laravel-db-instance"
+      AllocatedStorage: "20"
+      DBInstanceClass: "db.t3.micro"
+      Engine: "MySQL"
+      EngineVersion: "8.0.39"
+      MasterUsername: "admin"
+      MasterUserPassword: "MyPassword1"
+      DBName: "laraveldb"
+      VPCSecurityGroups:
+        - !Ref RDSSecurityGroup
+      DBSubnetGroupName: !Ref RDSSubnetGroup
+      PubliclyAccessible: false # Ensure RDS is not publicly accessible
+      MultiAZ: false
+      BackupRetentionPeriod: 7
+      Tags:
+        - Key: Name
+          Value: LaravelRDSInstance
+
+  # DB Subnet Group for RDS
+  RDSSubnetGroup:
+    Type: "AWS::RDS::DBSubnetGroup"
+    Properties:
+      DBSubnetGroupDescription: "Subnets for RDS MySQL instance"
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+
+  # Security Group for EC2 to allow HTTP and SSH access
+  EC2SecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: "Allow HTTP (port 80) and SSH (port 22) access"
+      VpcId: !Ref LaravelVPC
+      SecurityGroupIngress:
+        - IpProtocol: "tcp"
+          FromPort: "80"
+          ToPort: "80"
+          CidrIp: "0.0.0.0/0" # Allow all IPs for HTTP access
+        - IpProtocol: "tcp"
+          FromPort: "22"
+          ToPort: "22"
+          CidrIp: "0.0.0.0/0" # Allow all IPs for SSH access
+
+  # Security Group for RDS (Only allow EC2 to connect)
+  RDSSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: "Allow MySQL access from EC2 instance"
+      VpcId: !Ref LaravelVPC
+      SecurityGroupIngress:
+        - IpProtocol: "tcp"
+          FromPort: "3306"
+          ToPort: "3306"
+          SourceSecurityGroupId: !Ref EC2SecurityGroup # Allow access only from EC2
+
+  # Internet Gateway
+  InternetGateway:
+    Type: "AWS::EC2::InternetGateway"
+    Properties:
+      Tags:
+        - Key: Name
+          Value: "MyInternetGateway"
+
+  # Attach the Internet Gateway to the VPC
+  InternetGatewayAttachment:
+    Type: "AWS::EC2::VPCGatewayAttachment"
+    Properties:
+      VpcId: !Ref LaravelVPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # Route Table for Public Subnet
+  PublicSubnetRouteTable:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref LaravelVPC
+
+  # Route for the public subnet to reach the Internet Gateway
+  PublicSubnetRoute:
+    Type: "AWS::EC2::Route"
+    Properties:
+      RouteTableId: !Ref PublicSubnetRouteTable
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !Ref InternetGateway
+
+  # Associate the public subnet with the route table
+  PublicSubnetRouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicSubnetRouteTable
+
+Outputs:
+  EC2PublicIP:
+    Description: "Public IP of the EC2 instance"
+    Value: !GetAtt LaravelEC2Instance.PublicIp
+  EC2InstanceId:
+    Description: "EC2 instance ID"
+    Value: !Ref LaravelEC2Instance
+  RDSInstanceEndpoint:
+    Description: "Endpoint of the RDS MySQL instance"
+    Value: !GetAtt LaravelRDSInstance.Endpoint.Address
+  RDSInstanceId:
+    Description: "RDS instance ID"
+    Value: !Ref LaravelRDSInstance
