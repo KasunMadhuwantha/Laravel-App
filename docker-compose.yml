@@ -15,27 +15,25 @@ services:
       - 80:80
     networks:
       - app-network
-    depends_on:
-      - db
 
-  db:
-    image: mysql:5.7
-    container_name: mysql_db
-    restart: unless-stopped
-    environment:
-      MYSQL_DATABASE: my_laravel_app
-      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"  # Allow empty password
-    ports:
-      - 3308:3306
-    volumes:
-      - mysql_data:/var/lib/mysql
-    networks:
-      - app-network
+  # db:
+  #   image: mysql:5.7
+  #   container_name: mysql_db
+  #   restart: unless-stopped
+  #   environment:
+  #     MYSQL_DATABASE: my_laravel_app
+  #     MYSQL_ALLOW_EMPTY_PASSWORD: "yes"  # Allow empty password
+  #   ports:
+  #     - 3308:3306
+  #   volumes:
+  #     - mysql_data:/var/lib/mysql
+  #   networks:
+  #     - app-network
 
 networks:
   app-network:
     driver: bridge
 
-volumes:
-  mysql_data:
-    driver: local
+# volumes:
+#   mysql_data:
+#     driver: local
